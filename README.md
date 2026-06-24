@@ -2024,6 +2024,3 @@ Buka Postman, pilih New > HTTP Request.
 **Menghapus Data** — method DELETE:
 ```http://localhost:8080/post/4```
 #### ![Gambar 1](gambar74.png).
-
-#### Pertanyaan dan Tugas
-Selesaikan programnya sesuai langkah-langkah yang ada. Anda boleh melakukan improvisasi.
