@@ -950,3 +950,1080 @@ Input:
 
 Output:
 ##### ![Gambar 1](gambar43.png).
+
+# Nama: Bagus aditya hermawan
+# Nim: 312410382
+# Kelas: I241C
+# Matkul: Pemrograman Web 2
+
+## Langkah-Langkah Praktikum 5: Pagination dan Pencarian
+
+#### Membuat Pagination
+Pagination digunakan untuk membatasi dan memecah tampilan data menjadi beberapa halaman.
+
+Modifikasi method `admin_index` pada Controller Artikel:
+```php
+public function admin_index()
+    {
+        $title = 'Daftar Artikel';
+        $model = new ArtikelModel();
+        $artikel = $model->paginate(10);
+        $pager   = $model->pager;   
+        $data = [
+            'artikel' => $artikel,
+            'pager'   => $pager,
+            'title'   => $title,
+        ]);
+        return view('artikel/admin_index') 
+    }
+```
+
+Tambahkan kode berikut pada `views/artikel/admin_index.php` di bawah tabel:
+```php
+<?= $pager->links(); ?>
+```
+
+Hasil:
+##### ![Gambar 1](gambar44.png).
+
+#### Membuat Pencarian
+Pencarian digunakan untuk memfilter data berdasarkan kata kunci.
+
+Ubah kembali method `admin_index` pada Controller Artikel:
+```php
+public function admin_index()
+    {
+        $title = 'Daftar Artikel';
+        $q = $this->request->getVar('q') ?? '';
+        $model = new ArtikelModel();
+
+        if ($q) {
+            $model->like('judul', $q);
+        }
+
+        $artikel = $model->paginate(2);
+        $pager   = $model->pager;   
+        $data = [
+            'artikel' => $artikel,
+            'pager'   => $pager,
+            'title'   => $title,
+            'q' => $q,
+        ]);
+        return view('artikel/admin_index') 
+    }
+```
+
+Tambahkan form pencarian sebelum tabel pada `views/artikel/admin_index.php`:
+```php
+<form method="get" class="form-search">
+   <input type="text" name="q" value="<?= $q; ?>" placeholder="Cari data">
+   <input type="submit" value="Cari" class="btn btn-primary">
+</form>
+```
+
+Ubah link pager:
+```php <?= $pager->only(['q'])->links(); ?>```
+
+Hasil:
+##### ![Gambar 1](gambar45.png).
+
+
+## Langkah-Langkah Praktikum 6: Relasi Tabel dan Query Builder
+
+#### 1. Siapkan MySQL dan buka database lab_ci4
+
+#### 2. Membuat Tabel Kategori
+```
+CREATE TABLE kategori (
+         id_kategori INT(11) AUTO_INCREMENT,
+         nama_kategori VARCHAR(100) NOT NULL,
+         slug_kategori VARCHAR(100),
+         PRIMARY KEY (id_kategori)
+ );
+```
+Hasil:
+##### ![Gambar 1](gambar46.png).
+
+#### 3. Mengubah Tabel Artikel
+Tambahkan foreign key `id_kategori` untuk relasi dengan tabel `kategori`:
+```
+ALTER TABLE artikel
+ADD COLUMN id_kategori INT(11),
+ADD CONSTRAINT fk_kategori_artikel
+FOREIGN KEY (id_kategori) REFERENCES kategori(id_kategori);
+```
+
+#### 4. Membuat Model Kategori
+Buat `KategoriModel.php` di `app/Models`:
+```php
+<?php
+
+namespace App\Models;
+```
+
+#### 5-6. Modifikasi Controller Artikel
+Ubah method `admin_index`, `add`, `edit`, dan `delete` pada `Artikel.php` agar mendukung relasi kategori:
+```php
+public function admin_index()
+    {
+        ...
+        $builder = $model->select('artikel.*, kategori.nama_kategori')
+                         ->join('kategori', 'kategori.id_kategori = artikel.id_kategori');
+        ...
+        if ($kategori_id != '') {
+            $builder->where('artikel.id_kategori', $kategori_id);
+        }
+
+        $data['artikel'] = $builder->paginate(10);
+        $data['pager'] = $model->pager;
+
+        $kategoriModel = new KategoriModel();
+        $data['kategori'] = $kategoriModel->findAll();
+        return view('artikel/admin_index', $data);
+    }
+
+    public function add()
+    {
+        if ($this->request->getMethod() == 'post' && $this->validate([
+            'judul' => 'required',
+            'id_kategori' => 'required|integer'
+        ])) {
+            $model = new ArtikelModel();
+            $model->insert([
+                'judul' => $this->request->getPost('judul'),
+                'isi' => $this->request->getPost('isi'),
+                'slug' => url_title($this->request->getPost('judul')),
+                'id_kategori' => $this->request->getPost('id_kategori')
+            ]);
+            return redirect()->to('/admin/artikel');
+        } else {
+            $kategoriModel = new KategoriModel();
+            $data['kategori'] = $kategoriModel->findAll(); 
+            $data['title'] = "Tambah Artikel";
+            return view('artikel/form_add', $data);
+        }
+    }
+
+    public function edit($id)
+    {
+        $model = new ArtikelModel();
+        if ($this->request->getMethod() == 'post' && $this->validate([
+            'judul' => 'required',
+            'id_kategori' => 'required|integer'
+        ])) {
+            $model->update($id, [
+                'judul' => $this->request->getPost('judul'),
+                'isi' => $this->request->getPost('isi'),
+                'id_kategori' => $this->request->getPost('id_kategori')
+            ]);
+        return redirect()->to('/admin/artikel');
+    } else {
+        $data['artikel'] = $model->find($id);
+        $kategoriModel = new KategoriModel();
+        $data['kategori'] = $kategoriModel->asObject()->findAll();
+        $data['title'] = "Edit Artikel";
+        return view('artikel/form_edit', $data);
+    }
+}
+
+    public function delete($id)
+    {
+        $model = new ArtikelModel();
+        $model->delete($id);
+        return redirect()->to('/admin/artikel');
+    }
+
+    public function view($slug)
+    {
+        $model = new ArtikelModel();
+        $data['artikel'] = $model->where('slug', $slug)->first();
+        if (empty($data['artikel'])) {
+            throw new \CodeIgniter\Exceptions\PageNotFoundException('Cannot find the article.');
+    }
+
+        $data['title'] = $data['artikel']['judul'];
+        return view('artikel/detail', $data);
+    }
+    
+
+}
+```
+
+#### 7. Modifikasi View
+`index.php`:
+```php
+<?= $this->include('template/header'); ?>
+
+<?php if ($artikel): foreach ($artikel as $row): ?>
+    <article class="entry">
+            <h2><a href="<?= base_url('/artikel/' . $row['slug']); ?>"><?=
+$row['judul']; ?></a></h2>
+        <p>Kategori: <?= $row['nama_kategori'] ?></p>
+         <img src="<?= base_url('/gambar/' . $row['gambar']); ?>" alt="<?=
+$row['judul']; ?>">
+        <p><?= substr($row['isi'], 0, 200); ?></p>
+    </article>
+    <hr class="divider" />
+<?php endforeach; else: ?>
+    <article class="entry">
+        <h2>Belum ada data.</h2>
+    </article>
+<?php endif; ?>
+
+<?= $this->include('template/footer'); ?>
+```
+
+`admin_index.php`:
+```php
+<?= $this->include('template/admin_header'); ?>
+
+<h2><?= $title; ?></h2>
+<br>
+<div class="row mb-3">
+    <div class="col-md-6">
+        <form method="get" class="form-inline">
+            <input type="text" name="q" value="<?= $q; ?>" placeholder="Cari judul artikel" class="form-control mr-2">
+            <select name="kategori_id" class="form-control mr-2">
+                <option value="">Semua Kategori</option>
+               <?php foreach ($kategori as $k): ?>
+    <option value="<?= $k['id_kategori']; ?>" <?= ($kategori_id == $k['id_kategori']) ? 'selected' : ''; ?>>
+        <?= $k['nama_kategori']; ?>
+    </option>
+<?php endforeach; ?>
+            </select>
+            <input type="submit" value="Cari" class="btn btn-primary">
+        </form>
+    </div>
+</div>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Judul</th>
+            <th>Kategori</th>
+            <th>Status</th>
+            <th>Aksi</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php if (count($artikel) > 0): ?>
+            <?php foreach ($artikel as $row): $row = (object)$row; ?>
+                <tr>
+                    <td><?= $row->id; ?></td>
+                    <td>
+                         <b><?= $row->judul; ?></b>
+                        <p><small><?= substr($row->isi, 0, 50); ?></small></p>
+                    </td>
+                    <td><?= $row->nama_kategori; ?></td>
+                    <td><?= $row->status; ?></td>
+                    <td>
+                                <a class="btn btn-sm btn-info" href="<?=
+base_url('/admin/artikel/edit/' . $row->id); ?>">Ubah</a>
+                            <a class="btn btn-sm btn-danger" onclick="return
+confirm('Yakin menghapus data?');" href="<?=
+base_url('/admin/artikel/delete/' . $row->id); ?>">Hapus</a>
+                    </td>
+                </tr>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="5">Tidak ada data.</td>
+                    </tr>
+                <?php endif; ?>
+    </tbody>
+</table>
+
+<?= $pager->only(['q', 'kategori_id'])->links(); ?>
+
+<?= $this->include('template/admin_footer'); ?>
+```
+
+`form_add.php`:
+```php
+<?= $this->include('template/admin_header'); ?>
+
+<h2><?= $title; ?></h2>
+<form action="" method="post">
+    <p>
+        <label for="judul">Judul</label>   
+    <input type="text" name="judul" id="judul" required>
+    </p>
+    <p>
+        <label for="isi">Isi</label>
+        <textarea name="isi" id="isi" cols="50" rows="10"></textarea>
+    </p>
+    <p>
+        <label for="id_kategori">Kategori</label>
+        <select name="id_kategori" id="id_kategori" required>
+            <?php foreach($kategori as $k): ?>
+                <option value="<?= $k['id_kategori']; ?>"><?= $k['nama_kategori']; ?></option>
+            <?php endforeach; ?>
+        </select>
+    </p>
+    <p><input type="submit" value="Kirim" class="btn btn-large"></p><br>
+    <a href="<?= base_url('admin/artikel'); ?>" class="btn btn-large">Kembali</a></p>
+</form>
+
+<?= $this->include('template/admin_footer'); ?>
+```
+
+`form_edit.php`:
+```php
+<?= $this->include('template/admin_header'); ?>
+
+<h2><?= $title; ?></h2>
+<form action="" method="post">
+    <p>
+        <label for="judul">Judul</label>
+         <input type="text" name="judul" value="<?= $artikel['judul']; ?>"
+id="judul" required>
+    </p>
+    <p>
+        <label for="isi">Isi</label>
+        <textarea name="isi" id="isi" cols="50" rows="10"><?= $artikel['isi'];
+    ?></textarea>
+    </p>
+    <p>
+        <label for="id_kategori">Kategori</label>
+        <select name="id_kategori" id="id_kategori" required>
+            <?php foreach($kategori as $k): ?>
+                         <option value="<?= $k->id_kategori; ?>" <?=
+($artikel['id_kategori'] == $k->id_kategori) ? 'selected' : ''; ?>><?=
+$k->nama_kategori; ?></option>
+            <?php endforeach; ?>
+        </select>
+    </p>
+    <p><input type="submit" value="Kirim" class="btn btn-large"></p><br>
+    <a href="<?= base_url('admin/artikel'); ?>" class="btn btn-large">Kembali</a></p>
+</form>
+
+<?= $this->include('template/admin_footer'); ?>
+```
+
+#### 8. Testing
+Menampilkan daftar artikel dengan nama kategori:
+#### ![Gambar 1](gambar47.png).
+
+Menambah artikel baru dengan memilih kategori:
+#### ![Gambar 1](gambar48.png).
+#### ![Gambar 1](gambar49.png).
+
+Mengedit artikel dan mengubah kategori:
+#### ![Gambar 1](gambar50.png).
+#### ![Gambar 1](gambar51.png).
+
+Menghapus artikel — sebelum:
+#### ![Gambar 1](gambar49.png).
+Sesudah:
+#### ![Gambar 1](gambar52.png).
+
+#### Pertanyaan dan Tugas
+1. Selesaikan semua langkah praktikum di atas.
+2. Modifikasi tampilan detail artikel untuk menampilkan nama kategori:
+```php
+<?= $this->include('template/header'); ?>
+
+<article class="entry">
+    <h2><?= $artikel['judul']; ?></h2>
+
+    <p><b>Kategori:</b> <?= $artikel['nama_kategori']; ?></p>
+
+    <img src="<?= base_url('/gambar/' . $artikel['gambar']); ?>" 
+         alt="<?= $artikel['judul']; ?>">
+
+    <p><?= $artikel['isi']; ?></p>
+</article>
+
+<?= $this->include('template/footer'); ?>
+```
+#### ![Gambar 1](gambar53.png).
+
+4. Tambahkan daftar kategori di halaman depan:
+```php
+<?= $this->include('template/header'); ?>
+
+<?php if ($artikel): foreach ($artikel as $row): ?>
+    <article class="entry">
+            <h2><a href="<?= base_url('/artikel/' . $row['slug']); ?>"><?=
+$row['judul']; ?></a></h2>
+        <p>Kategori: <?= $row['nama_kategori'] ?></p>
+         <img src="<?= base_url('/gambar/' . $row['gambar']); ?>" alt="<?=
+$row['judul']; ?>">
+        <p><?= substr($row['isi'], 0, 200); ?></p>
+    </article>
+    <hr class="divider" />
+<?php endforeach; else: ?>
+    <article class="entry">
+        <h2>Belum ada data.</h2>
+    </article>
+<?php endif; ?>
+
+<?= $this->include('template/footer'); ?>
+```
+#### ![Gambar 1](gambar54.png).
+
+5. Buat fungsi untuk menampilkan artikel berdasarkan kategori tertentu (opsional).
+
+
+## Langkah-Langkah Praktikum 7: Upload File Gambar
+
+#### Upload Gambar pada Artikel
+Tambahkan logika unggah file pada method `add` di Controller Artikel:
+```php
+public function add()
+    {
+        $validation = \Config\Services::validation();
+        $validation->setRules(['judul' => 'required']);
+        $isDataValid = $validation->withRequest($this->request)->run();
+        if ($this->request->getMethod() == 'post' && $this->validate([
+            'judul' => 'required',
+               'id_kategori' => 'required|integer'
+        ])) {
+            $file = $this->request->getFile('gambar');
+            $file->move(ROOTPATH . 'public/gambar');
+            $model = new ArtikelModel();
+            $model->insert([
+                'judul' => $this->request->getPost('judul'),
+                'isi' => $this->request->getPost('isi'),
+                'slug' => url_title($this->request->getPost('judul')),
+                'id_kategori' => $this->request->getPost('id_kategori'),
+                'gambar' => $file->getName(),
+            ]);
+            return redirect()->to('/admin/artikel');
+        } else {
+            $kategoriModel = new KategoriModel();
+            $data['kategori'] = $kategoriModel->findAll(); 
+            $data['title'] = "Tambah Artikel";
+            return view('artikel/form_add', $data);
+        }
+    }
+```
+
+Tambahkan input file pada `views/artikel/form_add.php`:
+```php
+<p>
+ <input type="file" name="gambar">
+</p>
+```
+
+Sesuaikan tag form dengan enctype:
+```php
+<form action="" method="post" enctype="multipart/form-data">
+```
+
+Hasil uji coba upload:
+#### ![Gambar 1](gambar55.png).
+#### ![Gambar 1](gambar56.png).
+
+Kode untuk menampilkan gambar di halaman admin:
+```php
+<?php if (!empty($row->gambar)): ?>
+    <img src="<?= base_url('/gambar/' . $row->gambar); ?>" width="80" style="display:block; margin-bottom:5px;">
+<?php endif; ?>
+```
+#### ![Gambar 1](gambar57.png).
+#### ![Gambar 1](gambar58.png).
+
+
+## Langkah-Langkah Praktikum 8: AJAX
+AJAX (Asynchronous JavaScript and XML) membuat aplikasi web lebih responsif tanpa reload halaman.
+
+Keuntungan AJAX: meningkatkan UX, menghemat bandwidth, mempertahankan state aplikasi. Contoh penggunaan: live chat, autocomplete, real-time updates, validasi form.
+
+#### Menambahkan Pustaka jQuery
+Download jQuery dan letakkan di `public/assets/js`.
+#### ![Gambar 1](gambar59.png).
+
+#### Membuat AJAX Controller
+Buat `AjaxController.php` di `app/Controllers`:
+```php
+<?php
+
+namespace App\Controllers;
+
+use CodeIgniter\Controller;
+use CodeIgniter\HTTP\Request;
+use CodeIgniter\HTTP\Response;
+use App\Models\ArtikelModel;
+
+class  AjaxController extends Controller
+{
+    public function index()
+    {
+        return view('ajax/index');
+    }
+
+    public function getData()
+    {
+        $q = $this->request->getVar('q') ?? '';
+        $kategori_id = $this->request->getVar('kategori_id') ?? '';
+    
+        $model = new ArtikelModel();
+        
+        $builder = $model->db->table('artikel')
+            ->select('artikel.*, kategori.nama_kategori')
+            ->join('kategori', 'kategori.id_kategori = artikel.id_kategori', 'left');
+    
+        if ($q != '') {
+            $builder->like('artikel.judul', $q);
+        }
+    
+        if ($kategori_id != '') {
+            $builder->where('artikel.id_kategori', $kategori_id);
+        }
+    
+        $data = $builder->get()->getResultArray();
+    
+        return $this->response->setJSON($data);
+    }
+
+    public function delete($id)
+    {
+        $model = new ArtikelModel();
+        $data = $model->delete($id);
+
+        $data = [
+            'status' => 'OK'
+        ];
+
+        return $this->response->setJSON($data);
+    }
+
+    public function store()
+    {
+        $model = new ArtikelModel();
+
+        $file = $this->request->getFile('gambar');
+        $namaGambar = '';
+        if ($file && $file->isValid() && !$file->hasMoved()) {
+            $file->move(ROOTPATH . 'public/gambar');
+            $namaGambar = $file->getName();
+        }
+
+        $model->insert([
+            'judul'       => $this->request->getPost('judul'),
+            'isi'         => $this->request->getPost('isi'),
+            'slug'        => url_title($this->request->getPost('judul')),
+            'id_kategori' => $this->request->getPost('id_kategori'),
+            'gambar'      => $namaGambar,
+        ]);
+
+        return $this->response->setJSON(['status' => 'OK']);
+    }
+
+    public function getById($id)
+    {
+        $model = new ArtikelModel();
+        $data = $model->find($id);
+        return $this->response->setJSON($data);
+    }
+
+    public function update($id)
+    {
+        $model = new ArtikelModel();
+
+        $file = $this->request->getFile('gambar');
+        $namaGambar = $this->request->getPost('gambar_lama');
+        if ($file && $file->isValid() && !$file->hasMoved()) {
+            $file->move(ROOTPATH . 'public/gambar');
+            $namaGambar = $file->getName();
+        }
+
+        $model->update($id, [
+            'judul'       => $this->request->getPost('judul'),
+            'isi'         => $this->request->getPost('isi'),
+            'slug'        => url_title($this->request->getPost('judul')),
+            'id_kategori' => $this->request->getPost('id_kategori'),
+            'gambar'      => $namaGambar,
+        ]);
+
+        return $this->response->setJSON(['status' => 'OK']);
+    }
+}
+```
+
+Form edit dengan submit AJAX pada `form_edit.php`:
+```php
+<?= $this->include('template/admin_header'); ?>
+
+<h2><?= $title; ?></h2>
+<form id="formUbah" action="" method="post" enctype="multipart/form-data">
+    <p>
+        <label for="judul">Judul</label>
+         <input type="text" name="judul" value="<?= $artikel['judul']; ?>"
+id="judul" required>
+    </p>
+    <p>
+        <label for="isi">Isi</label>
+        <textarea name="isi" id="isi" cols="50" rows="10"><?= $artikel['isi'];
+    ?></textarea>
+    </p>
+    <p>
+        <label for="id_kategori">Kategori</label>
+        <select name="id_kategori" id="id_kategori" required>
+            <?php foreach($kategori as $k): ?>
+                         <option value="<?= $k->id_kategori; ?>" <?=
+($artikel['id_kategori'] == $k->id_kategori) ? 'selected' : ''; ?>><?=
+$k->nama_kategori; ?></option>
+            <?php endforeach; ?>
+        </select>
+    </p>
+    <p>
+        <?php if($artikel['gambar']): ?>
+            <img src="<?= base_url('/gambar/' . $artikel['gambar']) ?>" width="150"><br><br>
+        <?php endif; ?>
+        <label for="gambar">Ubah Gambar</label>
+        <input type="file" name="gambar" id="gambar">
+        <input type="hidden" name="gambar_lama" value="<?= $artikel['gambar']; ?>">
+    </p>
+    <p><input type="submit" value="Kirim" class="btn btn-large"></p><br>
+    <a href="<?= base_url('admin/artikel'); ?>" class="btn btn-large">Kembali</a></p>
+</form>
+
+<script src="<?= base_url('assets/js/jquery-4.0.0.min.js') ?>"></script>
+<script>
+$('#formUbah').submit(function(e) {
+    e.preventDefault();
+    var formData = new FormData(this);
+    $.ajax({
+        url: "<?= base_url('ajax/update/' . $artikel['id']) ?>",
+        method: "POST",
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(res) {
+            if (res.status == 'OK') {
+                alert('Artikel berhasil diubah!');
+                window.location.href = "<?= base_url('admin/artikel') ?>";
+            }
+        },
+        error: function() {
+            alert('Gagal mengubah data!');
+        }
+    });
+});
+</script>
+
+<?= $this->include('template/admin_footer'); ?>
+```
+
+Hasil:
+#### ![Gambar 1](gambar62.png).
+
+
+## Langkah-Langkah Praktikum 9: Implementasi AJAX Pagination dan Search
+
+#### 1. Persiapan
+Pastikan MySQL berjalan, tabel artikel dan kategori terisi, serta jQuery sudah terpasang.
+
+#### 2. Modifikasi Controller Artikel
+Ubah method `admin_index` agar mengembalikan JSON saat request AJAX:
+```php
+public function admin_index()
+    {
+        $title = 'Daftar Artikel (Admin)';
+        $model = new ArtikelModel();
+
+        $q = $this->request->getVar('q') ?? '';
+        $kategori_id = $this->request->getVar('kategori_id') ?? '';
+        $page = $this->request->getVar('page') ?? 1;
+
+        $builder = $model->select('artikel.*, kategori.nama_kategori')
+                         ->join('kategori', 'kategori.id_kategori = artikel.id_kategori');
+
+        if ($q != '') {
+            $builder->like('artikel.judul', $q);
+        }
+        if ($kategori_id != '') {
+            $builder->where('artikel.id_kategori', $kategori_id);
+        }
+
+        $sort = $this->request->getVar('sort') ?? '';
+        if ($sort == 'judul_asc') $builder->orderBy('artikel.judul', 'ASC');
+        if ($sort == 'judul_desc') $builder->orderBy('artikel.judul', 'DESC');
+        if ($sort == 'id_asc') $builder->orderBy('artikel.id', 'ASC');
+        if ($sort == 'id_desc') $builder->orderBy('artikel.id', 'DESC');
+
+        $artikel = $builder->paginate(5, 'default', $page);
+        $pager = $model->pager;
+
+        $data = [
+            'title'       => $title,
+            'q'           => $q,
+            'kategori_id' => $kategori_id,
+            'artikel'     => $artikel,
+            'pager'       => $pager,
+        ];
+
+        if ($this->request->isAJAX()) {
+            $data['pager'] = $pager->getDetails();
+            return $this->response->setJSON($data);
+        } else {
+            $kategoriModel = new KategoriModel();
+            $data['kategori'] = $kategoriModel->findAll();
+            return view('artikel/admin_index', $data);
+        }
+    }
+```
+
+#### 3. Modifikasi View
+```php
+<?= $this->include('template/admin_header'); ?>
+<h2><?= $title; ?></h2>
+<br>
+
+<div id="loading-indicator" style="display:none; text-align:center; padding: 20px;">
+    <div class="spinner-border text-primary" role="status">
+        <span class="sr-only">Loading data...</span>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-8">
+        <form id="filterForm" class="form-inline">
+            <input type="text" name="q" id="q" placeholder="Cari judul artikel" class="form-control mr-2">
+
+            <select name="kategori_id" id="kategori_id" class="form-control mr-2">
+                <option value="">Semua Kategori</option>
+                <?php foreach ($kategori as $k): ?>
+                    <option value="<?= $k['id_kategori']; ?>">
+                        <?= $k['nama_kategori']; ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <select name="sort" id="sort" class="form-control mr-2">
+                <option value="">Urutkan</option>
+                <option value="id_asc">ID Terkecil</option>
+                <option value="id_desc">ID Terbesar</option>
+                <option value="judul_asc">Judul A-Z</option>
+                <option value="judul_desc">Judul Z-A</option>
+            </select>
+
+            <button type="submit" class="btn btn-primary">Cari</button>
+        </form>
+    </div>
+</div>
+
+<div id="article-container"></div>
+<br>
+<div id="pagination-container" class="pagination"></div>
+
+
+<script src="<?= base_url('assets/js/jquery-4.0.0.min.js') ?>"></script>
+<script>
+$(document).ready(function () {
+    const articleContainer = $('#article-container');
+    const paginationContainer = $('#pagination-container');
+
+    const fetchData = (url) => {
+        $('#loading-indicator').show();
+        $('#article-container').html('');
+        $('#pagination-container').html('');
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            dataType: 'json',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            success: function (data) {
+                renderArticles(data.artikel);
+                renderPagination(data.pager, data.q, data.kategori_id);
+            },
+            error: function () {
+                $('#article-container').html('<div class="alert alert-danger">Gagal memuat data.</div>');
+            },
+            complete: function () {
+                $('#loading-indicator').hide();
+            }
+        });
+    };
+
+    const renderArticles = (articles) => {
+        let html = '<table class="table table-bordered table-striped">';
+        html += '<thead><tr><th>ID</th><th>Gambar</th><th>Judul</th><th>Kategori</th><th>Status</th><th>Aksi</th></tr></thead><tbody>';
+
+        if (articles && articles.length > 0) {
+            articles.forEach(row => {
+                html += `<tr>
+                    <td>${row.id}</td>
+                    <td>
+                        ${row.gambar
+                            ? `<img src="<?= base_url('/gambar/') ?>${row.gambar}" width="80">`
+                            : '-'}
+                    </td>
+                    <td><b>${row.judul}</b><br><small>${row.isi.substring(0, 50)}</small></td>
+                    <td>${row.nama_kategori}</td>
+                    <td>${row.status}</td>
+                    <td>
+                        <a href="<?= base_url('/admin/artikel/edit/') ?>${row.id}" class="btn btn-sm btn-info">Ubah</a>
+                        <a href="#" class="btn btn-sm btn-danger btn-delete" data-id="${row.id}">Hapus</a>
+                    </td>
+                </tr>`;
+            });
+        } else {
+            html += '<tr><td colspan="6" class="text-center">Tidak ada data.</td></tr>';
+        }
+
+        html += '</tbody></table>';
+        $('#article-container').html(html);
+    };
+
+    const renderPagination = (pager, q, kategori_id) => {
+        if (!pager || pager.pageCount <= 1) return;
+                    
+        let sort = $('#sort').val();
+        let html = '<nav><ul class="pagination">';
+                    
+        for (let i = 1; i <= pager.pageCount; i++) {
+            let url = `<?= base_url('/admin/artikel') ?>?page=${i}&q=${q ?? ''}&kategori_id=${kategori_id ?? ''}&sort=${sort ?? ''}`;
+            html += `<li class="page-item ${i == pager.currentPage ? 'active' : ''}">
+                        <a class="page-link pagination-link" href="${url}">${i}</a>
+                     </li>`;
+        }
+                    
+        html += '</ul></nav>';
+        paginationContainer.html(html);
+    };
+
+    $('#filterForm').on('submit', function (e) {
+        e.preventDefault();
+        const q = $('#q').val();
+        const kategori_id = $('#kategori_id').val();
+        const sort = $('#sort').val();
+        fetchData(`<?= base_url('/admin/artikel') ?>?q=${q}&kategori_id=${kategori_id}&sort=${sort}`);
+    });
+
+    $('#kategori_id').on('change', function () {
+        $('#filterForm').trigger('submit');
+    });
+
+    $('#sort').on('change', function () {
+        $('#filterForm').trigger('submit');
+    });
+
+
+    $(document).on('click', '.pagination-link', function (e) {
+        e.preventDefault();
+        const url = $(this).attr('href');
+        if (url && url !== '#') {
+            fetchData(url);
+        }
+    });
+
+    $(document).on('click', '.btn-delete', function (e) {
+        e.preventDefault();
+        const id = $(this).data('id');
+        if (confirm('Yakin hapus data ini?')) {
+            $.ajax({
+                url: `<?= base_url('admin/artikel/delete/') ?>${id}`,
+                method: 'GET',
+                success: function () {
+                    $('#filterForm').trigger('submit');
+                },
+                error: function () {
+                    alert('Gagal menghapus data.');
+                }
+            });
+        }
+    });
+
+    fetchData('<?= base_url('/admin/artikel') ?>');
+});
+</script>
+
+<?= $this->include('template/admin_footer'); ?>
+```
+
+Fungsi:
+- jQuery mengirim request ke server secara otomatis
+- Form tidak reload halaman
+- Tidak memakai tabel artikel dan pagination secara langsung.
+
+Hasil/Output:
+#### ![Gambar 1](gambar63.png).
+
+#### Pertanyaan dan Tugas
+1. Selesaikan semua langkah praktikum di atas.
+2. Modifikasi tampilan data artikel dan pagination sesuai kebutuhan desain.
+```php
+table-bordered table-striped
+```
+Menambahkan class tersebut agar tabel lebih mudah dibaca.
+
+3. Tambahkan indikator loading saat data sedang diambil dari server.
+```php
+$('#loading-indicator').show();  // saat AJAX mulai
+// ...
+complete: function () {
+    $('#loading-indicator').hide();  // saat AJAX selesai
+}
+```
+Indikator ditampilkan saat request dimulai dan disembunyikan setelah response diterima.
+
+Hasil:
+#### ![Gambar 1](gambar64.png).
+#### ![Gambar 1](gambar63.png).
+
+4. Implementasikan fitur sorting dengan AJAX.
+```php
+<select name="sort" id="sort" class="form-control mr-2">
+                <option value="">Urutkan</option>
+                <option value="id_asc">ID Terkecil</option>
+                <option value="id_desc">ID Terbesar</option>
+                <option value="judul_asc">Judul A-Z</option>
+                <option value="judul_desc">Judul Z-A</option>
+</select>
+
+$sort = $this->request->getVar('sort') ?? '';
+        if ($sort == 'judul_asc') $builder->orderBy('artikel.judul', 'ASC');
+        if ($sort == 'judul_desc') $builder->orderBy('artikel.judul', 'DESC');
+        if ($sort == 'id_asc') $builder->orderBy('artikel.id', 'ASC');
+        if ($sort == 'id_desc') $builder->orderBy('artikel.id', 'DESC');
+```
+
+Hasil berdasarkan abjad:
+#### ![Gambar 1](gambar65.png).
+Hasil berdasarkan ID:
+#### ![Gambar 1](gambar66.png).
+
+
+## Langkah-Langkah Praktikum 10: API
+REST API adalah antarmuka yang memungkinkan dua sistem berkomunikasi dan bertukar data melalui internet.
+
+#### Mendownload REST Client
+Download Postman sebagai REST Client untuk testing REST API.
+#### ![Gambar 1](gambar67.png).
+
+#### Membuat REST Controller
+Buat `Post.php` di `app/Controllers`:
+```php
+<?php
+
+namespace App\Controllers;
+
+use CodeIgniter\RESTful\ResourceController;
+use CodeIgniter\API\ResponseTrait;
+use App\Models\ArtikelModel;
+
+class Post extends ResourceController
+{
+    use ResponseTrait;
+    // all users
+    public function index()
+    {
+        $model = new ArtikelModel();
+        $data['artikel'] = $model->orderBy('id', 'DESC')->findAll();
+        return $this->respond($data);
+    }
+    // create
+    public function create()
+    {
+        $model = new ArtikelModel();
+        $data = [
+            'judul' => $this->request->getVar('judul'),
+            'isi' => $this->request->getVar('isi'),
+        ];
+        $model->insert($data);
+        $response = [
+            'status' => 201,
+            'error' => null,
+            'messages' => [
+                'success' => 'Data artikel berhasil ditambahkan.'
+            ]
+        ];
+        return $this->respondCreated($response);
+    }
+    // single user
+    public function show($id = null)
+    {
+        $model = new ArtikelModel();
+        $data = $model->where('id', $id)->first();
+        if ($data) {
+            return $this->respond($data);
+        } else {
+            return $this->failNotFound('Data tidak ditemukan.');
+        }
+    }
+    // update
+    public function update($id = null)
+    {
+        $model = new ArtikelModel();
+        $id = $this->request->getVar('id');
+        $data = [
+            'judul' => $this->request->getVar('judul'),
+            'isi' => $this->request->getVar('isi'),
+        ];
+        $model->update($id, $data);
+        $response = [
+            'status' => 200,
+            'error' => null,
+            'messages' => [
+                'success' => 'Data artikel berhasil diubah.'
+            ]
+        ];
+        return $this->respond($response);
+    }
+    // delete
+    public function delete($id = null)
+    {
+        $model = new ArtikelModel();
+        $data = $model->where('id', $id)->delete($id);
+        if ($data) {
+            $model->delete($id);
+            $response = [
+                'status' => 200,
+                'error' => null,
+                'messages' => [
+                    'success' => 'Data artikel berhasil dihapus.'
+                ]
+            ];
+            return $this->respondDeleted($response);
+        } else {
+            return $this->failNotFound('Data tidak ditemukan.');
+        }
+    }
+}
+```
+
+#### Membuat Routing REST API
+Tambahkan route berikut pada `Routes.php`:
+```php
+$routes->resource('post');
+```
+
+Cek route dengan perintah:
+```
+php spark routes
+```
+#### ![Gambar 1](gambar68.png).
+
+#### Testing REST API dengan Postman
+Buka Postman, pilih New > HTTP Request.
+#### ![Gambar 1](gambar69.png).
+
+**Menampilkan Semua Data** — method GET:
+```http://localhost:8080/post```
+#### ![Gambar 1](gambar70.png).
+
+**Menampilkan Data Spesifik** — method GET dengan ID:
+```http://localhost:8080/post/3```
+#### ![Gambar 1](gambar71.png).
+
+**Mengubah Data** — method PUT, isi KEY dan VALUE pada tab Body > x-www-form-urlencoded:
+```http://localhost:8080/post/2```
+#### ![Gambar 1](gambar72.png).
+
+**Menambahkan Data** — method POST:
+```http://localhost:8080/post```
+#### ![Gambar 1](gambar73.png).
+
+**Menghapus Data** — method DELETE:
+```http://localhost:8080/post/4```
+#### ![Gambar 1](gambar74.png).
+
+#### Pertanyaan dan Tugas
+Selesaikan programnya sesuai langkah-langkah yang ada. Anda boleh melakukan improvisasi.
